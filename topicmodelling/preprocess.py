@@ -1,9 +1,15 @@
 import string
+import re
+import logging
+import unicodedata
 
 from abc import ABCMeta, abstractmethod
 from nltk.corpus import stopwords
 from nltk import stem
 from nltk.tokenize import word_tokenize, wordpunct_tokenize
+from tweetokenize import Tokenizer as Tweetokenizer
+
+logging.basicConfig(format='%(levelname)s : %(message)s', level=logging.INFO)
 
 
 class Pipeline(object):
@@ -46,6 +52,11 @@ class Mapper(object):
         pass
 
 
+class SpaceTokenizer(Tokenizer):
+    def tokenize(self, doc):
+        return doc.split(" ")
+
+
 class NLTKTokenizer(Tokenizer):
     def tokenize(self, doc):
         return word_tokenize(doc)
@@ -54,6 +65,14 @@ class NLTKTokenizer(Tokenizer):
 class WordPunctTokenizer(Tokenizer):
     def tokenize(self, doc):
         return wordpunct_tokenize(doc)
+
+
+class TweetTokenizer(Tokenizer):
+    def __init__(self):
+        self.tokenizer = Tweetokenizer(usernames='', urls='', phonenumbers='', times='', numbers='')
+
+    def tokenize(self, doc):
+        return self.tokenizer.tokenize(doc)
 
 
 class PorterStemmer(Stemmer, Mapper):
@@ -67,9 +86,14 @@ class PorterStemmer(Stemmer, Mapper):
         return self.stemmer.stem(token)
 
 
-class LowerCaseMapper(Mapper):
+class LowercaseMapper(Mapper):
     def map(self, token):
         return token.lower()
+
+
+class ASCIINormalizer(Mapper):
+    def map(self, token):
+        return unicodedata.normalize('NFD', token).encode('ascii', 'ignore')
 
 
 class StopWordFilter(Filter):
@@ -85,6 +109,33 @@ class PunctuationFilter(Filter):
         return word not in string.punctuation
 
 
+class LengthFilter(Filter):
+    def __init__(self, length=3):
+        self.length = length
+
+    def filter(self, word):
+        return len(word) > self.length
+
+
+class UnnecessaryWordsFilter(Filter):
+    def __init__(self, words=None):
+        self.words = words
+        if self.words is None:
+            words = ['http', 'it\'s', 'won\'t', ' ', 'https', '...', 'i', 'rt', '']
+            self.words = set(words)
+
+    def filter(self, word):
+        return word.lower() not in self.words
+
+
+class ASCIIMapper(Mapper):
+    def __init__(self):
+        self.ascii = string.printable
+
+    def map(self, word):
+        return re.sub(r'[^\x00-\x7F]+', ' ', word).strip()
+
+
 class LDAPipeline(Pipeline):
     def __init__(self, tokenizer=None, mappers=[], filters=[]):
         self.tokenizer = tokenizer
@@ -93,7 +144,7 @@ class LDAPipeline(Pipeline):
 
         self.mappers = mappers
         if self.mappers is None:
-            self.mappers = []
+            self.mappers = [ASCIINormalizer(), LowercaseMapper()]
 
         self.filters = filters
         if self.filters is None:

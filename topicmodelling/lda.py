@@ -1,6 +1,4 @@
 import numpy as np
-import logging
-import operator
 
 
 class LDA(object):
@@ -10,10 +8,10 @@ class LDA(object):
     assignments of topic labels to words in a collapsed LDA model
     """
 
-    def __init__(self, corpus, num_topics=10, alpha=0.1, beta=0.01):
+    def __init__(self, corpus, num_topics=10, alpha=0.1, beta=0.01, iterations=100):
         """Initialize LDA with number of topics, alpha and beta
 
-        :param docs:
+        :param corpus:
         :param num_topics:
         :param alpha:
         :param beta:
@@ -26,7 +24,9 @@ class LDA(object):
         self.num_words_topic_doc = np.zeros((len(self.corpus), self.num_topics))
         self.num_times_word_topic = np.zeros((self.num_topics, len(self.corpus.vocab)))
         self.topic_distribution = []
-        self.initialize()
+        self.iterations = iterations
+
+        np.random.seed(10)
 
     def initialize(self):
         self.num_words_topic_doc += self.alpha
@@ -43,7 +43,7 @@ class LDA(object):
                 self.num_times_word_topic[topic][token] += 1
             self.topic_distribution.append(np.array(topic_distribution_doc))
 
-    def iteration(self):
+    def inference(self):
         for m, doc in enumerate(self.corpus):
             for n, token in enumerate(doc):
                 old_topic = self.topic_distribution[m][n]
@@ -67,3 +67,28 @@ class LDA(object):
                     * (self.num_words_topic_doc[document]) / self.num_words_topic
         return probabilities.argmax()
 
+    def create_model(self, **kwargs):
+        self.__dict__.update(kwargs)
+
+        # Initialize model
+        self.initialize()
+
+        for iteration in range(self.iterations):
+            self.inference()
+
+        self.topic_distribution = (self.num_words_topic_doc.T / np.sum(self.num_words_topic_doc, axis=1)).T
+
+    def print_topics(self, top_n=10):
+        for topic in self.num_times_word_topic:
+            topic_weights = topic / np.sum(topic)
+            word_weights = {}
+            for i, weight in enumerate(topic_weights):
+                word_weights[self.corpus.vocab.id2word[i]] = weight
+            word_weights = sorted(word_weights.items(), key=lambda (k, v): (v, k), reverse=True)
+            i = 0
+            for word, weight in word_weights:
+                if i == top_n:
+                    break
+                print ('"{}"*{}, '.format(word, weight),)
+                i += 1
+            print()
